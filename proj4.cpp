@@ -1,15 +1,18 @@
 #include <iostream>
-#include <fctnl.h>
-#include <linux/types.h>
-#include <linux/stat.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace std;
 
+//definitions
+#define BYTESTOREAD 1024
+
 //global vars
-char *cli_arg1;
-char *cli_arg2;
-char *read_content[100];
+char *filename;
+char *search_string;
+char *read_buffer[BYTESTOREAD];
 
 int main(int argc, char* argv[]){
 	//collect file name and search string
@@ -22,27 +25,36 @@ int main(int argc, char* argv[]){
 	if (argc < 3){
 		//if the minimum number of arguments was not met
 		cout << "Error: Please provide at least 2 arguments." << endl;
+		return 1;
 	}
 	else{
 		//if we got the number of arguments we wanted
-		const void *read_buffer = argv;
-		cli_arg1 = argv[1];
-		cli_arg2 = argv[2];
-
+		filename = argv[1];
+		search_string = argv[2];
 	}
 
 	//open the file
-	if ( (fd = open(cli_arg1, O_RDONLY)) < 0){
+	if ( (fd = open(filename, O_RDONLY)) < 0){
 		//open as read only since we should not be modifying files
 		cerr << "open error";
 	}
 
-	//read the files
-	if ( read(fd, read_content, 100) < 0){
-		cerr << "read error: "
+	//find file size
+	struct stat st;
+	long filesize;
+	stat(filename, &st);
+	filesize = st.st_size;
+	cout << "File size: " << filesize << " bytes." << endl;
+
+
+	//read the file
+	int numof_bytes_read;
+	while ( (numof_bytes_read = read(fd, read_buffer, BYTESTOREAD)) > 0){
+		
 	}
-	else{
-		//we are reading the files now?
+
+	if (numof_bytes_read < 0){
+		cerr << "read error:";
 	}
 
 
@@ -50,5 +62,5 @@ int main(int argc, char* argv[]){
 
 
 
-
+	return 0;
 } //end of main
