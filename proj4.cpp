@@ -10,12 +10,14 @@
 using namespace std;
 
 //definitions
-#define BYTESTOREAD 1024
+#define DEFAULTBYTESTOREAD 1024
+#define MAXCHUNK 8192
 
 //global vars
 char *filename;
 char *search_string;
 char read_buffer[BYTESTOREAD];
+int bytes_to_read = DEFAULTBYTESTOREAD;
 
 int main(int argc, char* argv[]){
 	//collect file name and search string
@@ -23,6 +25,7 @@ int main(int argc, char* argv[]){
 	//read the file and find the number of instances of a string byte by byte of
 	// the given search string
 	int fd;
+	int mmap = 0;
 
 	//check the input
 	if (argc < 3){
@@ -34,6 +37,24 @@ int main(int argc, char* argv[]){
 		//if we got the number of arguments we wanted
 		filename = argv[1];
 		search_string = argv[2];
+	}
+
+	if (argc > 3){
+		//third argument given
+		if ( strcmp("mmap", argv[4]) == 0){
+			//mmap entered, acknowledge this
+			mmap = 1;
+		}
+		else{
+			//mmap not entered, assume it is a number
+			int entry = atoi(argv[4]);
+			if (entry >= MAXCHUNK){
+				bytes_to_read = MAXCHUNK;
+			}
+			else if ( (entry > 0) || (entry < MAXCHUNK)){
+				bytes_to_read = entry;
+			}
+		}
 	}
 
 	//open the file
