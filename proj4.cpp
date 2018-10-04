@@ -3,6 +3,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
 using namespace std;
 
@@ -12,7 +15,7 @@ using namespace std;
 //global vars
 char *filename;
 char *search_string;
-char *read_buffer[BYTESTOREAD];
+char read_buffer[BYTESTOREAD];
 
 int main(int argc, char* argv[]){
 	//collect file name and search string
@@ -34,9 +37,11 @@ int main(int argc, char* argv[]){
 	}
 
 	//open the file
+	errno = 0;
 	if ( (fd = open(filename, O_RDONLY)) < 0){
 		//open as read only since we should not be modifying files
-		cerr << "open error";
+		cout << "Error: open returned errno: " << errno << endl;
+		return 1;
 	}
 
 	//find file size
@@ -49,12 +54,26 @@ int main(int argc, char* argv[]){
 
 	//read the file
 	int numof_bytes_read;
+	int count = 0;
 	while ( (numof_bytes_read = read(fd, read_buffer, BYTESTOREAD)) > 0){
-		
+		//read returns the number of bytes read and increments some counter
+		//that marks where it currently is. So loop the read function and check
+		//what it stores in read_buffer for words to count. Incremement a count
+		//for the number of times a search string is found
+
+
+		//go through read_buffer and count num of search_string gound
+		char *ptr = strstr(read_buffer, search_string);
+		while (ptr != NULL){
+			count++;
+			ptr = strstr(ptr + 1, search_string);
+		}
 	}
 
+	cout << "num of substr found " << count << endl;;
 	if (numof_bytes_read < 0){
 		cerr << "read error:";
+		return 1;
 	}
 
 

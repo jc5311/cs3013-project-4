@@ -1,4 +1,5 @@
-all: proj4.o
+
+default: proj4.o
 	g++ proj4.o -o proj4
 
 proj4.o:
