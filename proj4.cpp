@@ -59,11 +59,11 @@ int SendMsg(int iTo, msg *pMsg){
 	return 0;
 }
 
-int ReadBuff(int start_addr, int bytes_to_read){
+int ReadBuff(int start_addr, int end_addr){
 	int count = 0;
 	int ptr = 0;
 
-	for (int i = start_addr; i < bytes_to_read; i++){
+	for (int i = start_addr; i < end_addr; i++){
 		if (mmapped_data[i] == search_string[ptr]){
 			//if char matches, increment pointer for string search
 			ptr++;
@@ -71,9 +71,9 @@ int ReadBuff(int start_addr, int bytes_to_read){
 				count++;
 				ptr = 0;
 			}
-			else if ( (i == bytes_to_read - 1) && ptr < strlen(search_string)){
-				bytes_to_read++;
-				if (bytes_to_read >= filesize){
+			else if ( (i == end_addr - 1) && ptr < strlen(search_string)){
+				end_addr++;
+				if (end_addr >= filesize){
 					//we reached the end of the area to read so break here
 					//because there is no point in continuing
 					break;
@@ -99,31 +99,7 @@ void *wthreadRoutine(void* arg){
 	RecvMsg(m_id, &message);
 	//message.value1 will be holding start addr
 	//message.value2 will be holding end addr
-	//mmap
-	char* wmmaped_data = (char*)mmap(NULL, message.value2, PROT_READ,\
-		MAP_PRIVATE | MAP_POPULATE, fd, message.value1);
-	if (wmmaped_data < 0){
-		perror("Could not mmap file.");
-		exit(1);
-	}
-	cout << "mmap on m_id " << m_id << endl;
-	//read
-	cout << wmmaped_data << endl;
-	char *ptr = strstr( (char*)wmmaped_data, search_string);
-	if (ptr == NULL){
-		perror("Strstr failed.");
-		exit(1);
-	}
-	cout << "strstr" << ptr << endl;
-	while( ptr != NULL){
-		wcount++;
-		ptr = strstr(++ptr, search_string);
-		cout << "strstr" << ptr <<endl;
-	}
-	if (munmap(wmmaped_data, message.value2) < 0){
-		perror("Could not unmap memory.");
-		exit(1);
-	}
+	wcount = ReadBuff(message.value1, message.value2);
 
 	message.iSender = m_id;
 	message.type = ALLDONE;
@@ -137,23 +113,19 @@ void *wthreadRoutine(void* arg){
 void *pthreadRoutine(void *arg){
 	//cout << "bloop parent thread." << endl;
 	int start = 0;
-	int end = 0;
+	int end = filesize/num_threads;
 	int mod = 0;
+	
 	for (int i = 1; i <= num_threads; i++){
-
 		if (i > 1){
-			start = end + 1;
-			end = (start - 1) + (filesize/num_threads);
+			start = end;
+			end = start + (filesize/num_threads);
 			mod = filesize % num_threads;
 		}
 
 		if (i <= mod){
 			end++;
 		}
-
-		//"filesize" = end - start
-		off_t start = start & ~(sysconf(_SC_PAGE_SIZE) - 1);
-		long alloc_size = (long)(end - start);
 
 		msg message;
 		message.iSender = 0;
@@ -180,6 +152,8 @@ int main(int argc, char* argv[]){
 	//collect input args *******************************************************
 	int do_mmap = 0;
 	int do_multi_threaded = 0;
+	struct stat st;
+
 	//check the input
 	if (argc < 3){
 		//if the minimum number of arguments was not met
@@ -190,6 +164,9 @@ int main(int argc, char* argv[]){
 		//if we got the number of arguments we wanted
 		filename = argv[1];
 		search_string = argv[2];
+
+		stat(filename, &st);
+		filesize = st.st_size;
 	}
 
 	if (argc > 3){
@@ -211,17 +188,25 @@ int main(int argc, char* argv[]){
 	}
 
 	if (argc > 4){
-		//fourth argument given for 
+		//fourth argument given for number of threads to use
 		do_multi_threaded = 1;
 		int entry = atoi(argv[4]);
-		if ( (entry > 0) || (entry <= MAXTHREADS)){
+		if ( (entry > 0) && (entry <= MAXTHREADS)){
 			num_threads = entry;
+
+			if (num_threads > filesize){
+				num_threads = filesize;
+			}
 		}
-		else {
-			num_threads = MAXTHREADS;
+		else if ( (entry < 0) || (entry > MAXTHREADS) ){
+			cout << "Error: Please enter at least 1 thread or at most 16 threads." << endl;
+			exit(1);
 		}
 	}
 	//end of input arg checking ************************************************
+
+	//print file size
+	cout << "File size: " << filesize << " bytes." << endl;
 
 	char read_buffer[bytes_to_read];
 	//open the file
@@ -231,12 +216,6 @@ int main(int argc, char* argv[]){
 		perror("Could not open file.");
 		exit(1);
 	}
-
-	//find file size
-	struct stat st;
-	stat(filename, &st);
-	filesize = st.st_size;
-	cout << "File size: " << filesize << " bytes." << endl;
 
 	if (do_mmap && !do_multi_threaded){
 		errno = 0;
@@ -269,6 +248,13 @@ int main(int argc, char* argv[]){
 		}
 	}
 	else if (do_multi_threaded){
+		errno = 0;
+		mmapped_data = (char*)mmap(NULL, filesize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+		if (mmapped_data < 0){
+			perror("Could not mmap file.");
+			exit(1);
+		}
+
 		//create sems
 		for (int i = 0; i <= num_threads; i++){
 			if ( sem_init(&sendsem[i], 0, 1) == 0){
@@ -290,7 +276,7 @@ int main(int argc, char* argv[]){
 			}
 		}
 
-		//create threds
+		
 		//create parent thread
 		if (pthread_create(&tids[0], NULL, pthreadRoutine, &mailbox_ids[0]) == 0){
 			//thread created successfully
