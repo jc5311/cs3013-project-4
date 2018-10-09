@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <semaphore.h>
 
 using namespace std;
 
@@ -21,9 +22,9 @@ using namespace std;
 typedef struct{
 	int iSender; //sender of message
 	int type; //message type
-	int value1;
-	int value2;
-}
+	long value1;
+	long value2;
+} msg;
 
 //global vars
 char *filename;
@@ -38,9 +39,10 @@ sem_t sendsem[MAXTHREADS+1];
 
 msg mailboxes[MAXTHREADS+1];
 int mailbox_ids[MAXTHREADS+1] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-int num_threads = 0;
 int count = 0;
-void *mmapped_data = 0;
+char *mmapped_data = 0;
+
+int fd;
 
 //functions
 int RecvMsg(int iFrom, msg *pMsg){
@@ -57,30 +59,86 @@ int SendMsg(int iTo, msg *pMsg){
 	return 0;
 }
 
+int ReadBuff(int start_addr, int bytes_to_read){
+	int count = 0;
+	int ptr = 0;
+
+	for (int i = start_addr; i < bytes_to_read; i++){
+		if (mmapped_data[i] == search_string[ptr]){
+			//if char matches, increment pointer for string search
+			ptr++;
+			if (ptr == strlen(search_string)){
+				count++;
+				ptr = 0;
+			}
+			else if ( (i == bytes_to_read - 1) && ptr < strlen(search_string)){
+				bytes_to_read++;
+				if (bytes_to_read >= filesize){
+					//we reached the end of the area to read so break here
+					//because there is no point in continuing
+					break;
+				}
+			}
+		}
+		else{
+			//if char mismatch
+			ptr = 0;
+		}
+
+	}
+	return count;
+}
+
 //thread routines
 void *wthreadRoutine(void* arg){
+	//cout << "bloop worker thread." << endl;
 	int m_id = *(int*)arg;
 	msg message;
+	int wcount = 0;
 
 	RecvMsg(m_id, &message);
 	//message.value1 will be holding start addr
 	//message.value2 will be holding end addr
-
-	//read through buffer
-
-	//count substrings
+	//mmap
+	char* wmmaped_data = (char*)mmap(NULL, message.value2, PROT_READ,\
+		MAP_PRIVATE | MAP_POPULATE, fd, message.value1);
+	if (wmmaped_data < 0){
+		perror("Could not mmap file.");
+		exit(1);
+	}
+	cout << "mmap on m_id " << m_id << endl;
+	//read
+	cout << wmmaped_data << endl;
+	char *ptr = strstr( (char*)wmmaped_data, search_string);
+	if (ptr == NULL){
+		perror("Strstr failed.");
+		exit(1);
+	}
+	cout << "strstr" << ptr << endl;
+	while( ptr != NULL){
+		wcount++;
+		ptr = strstr(++ptr, search_string);
+		cout << "strstr" << ptr <<endl;
+	}
+	if (munmap(wmmaped_data, message.value2) < 0){
+		perror("Could not unmap memory.");
+		exit(1);
+	}
 
 	message.iSender = m_id;
 	message.type = ALLDONE;
 	message.value1 = 0;
-	message.value2 = count;
+	message.value2 = wcount;
 	SendMsg(0, &message);
 
 	return 0;
 }
 
-void *pthreadroutine(void *arg){
-	int start = mmapped_data, end = 0, mod = 0;
+void *pthreadRoutine(void *arg){
+	//cout << "bloop parent thread." << endl;
+	int start = 0;
+	int end = 0;
+	int mod = 0;
 	for (int i = 1; i <= num_threads; i++){
 
 		if (i > 1){
@@ -93,16 +151,20 @@ void *pthreadroutine(void *arg){
 			end++;
 		}
 
+		//"filesize" = end - start
+		off_t start = start & ~(sysconf(_SC_PAGE_SIZE) - 1);
+		long alloc_size = (long)(end - start);
+
 		msg message;
 		message.iSender = 0;
 		message.type = RANGE;
-		message.value1 = start; //start address to search at
-		message.value2 = end; //end address to stop searching at
+		message.value1 = (long) start; //start address to search at
+		message.value2 = (long) end; //end address to stop searching at
 		SendMsg(i, &message);
 	}
 
 	//wait for messages from all workers
-	for (int = 1; i <= num_threads; i++){
+	for (int i = 1; i <= num_threads; i++){
 		msg message;
 		RecvMsg(0, &message);
 		if (message.type == ALLDONE){
@@ -116,7 +178,6 @@ void *pthreadroutine(void *arg){
 int main(int argc, char* argv[]){
 	
 	//collect input args *******************************************************
-	int fd;
 	int do_mmap = 0;
 	int do_multi_threaded = 0;
 	//check the input
@@ -131,7 +192,7 @@ int main(int argc, char* argv[]){
 		search_string = argv[2];
 	}
 
-	/*if (argc > 3){
+	if (argc > 3){
 		//third argument given
 		if ( strcmp("mmap", argv[3]) == 0){
 			//mmap entered, acknowledge this
@@ -147,20 +208,19 @@ int main(int argc, char* argv[]){
 				bytes_to_read = entry;
 			}
 		}
-	}*/
-	if (argc > 3){
-		//adjust this to be an additional optional argument
-		//later. Whenever we get here using pn we should always set and use mmap
+	}
+
+	if (argc > 4){
+		//fourth argument given for 
 		do_multi_threaded = 1;
-		entry = atoi(argv[3]);
-		if ( (entry >= 0) || (entry <= MAXTHREADS)){
+		int entry = atoi(argv[4]);
+		if ( (entry > 0) || (entry <= MAXTHREADS)){
 			num_threads = entry;
 		}
 		else {
 			num_threads = MAXTHREADS;
 		}
 	}
-
 	//end of input arg checking ************************************************
 
 	char read_buffer[bytes_to_read];
@@ -168,8 +228,8 @@ int main(int argc, char* argv[]){
 	errno = 0;
 	if ( (fd = open(filename, O_RDONLY)) < 0){
 		//open as read only since we should not be modifying files
-		cout << "Error: open returned errno: " << errno << endl;
-		return 1;
+		perror("Could not open file.");
+		exit(1);
 	}
 
 	//find file size
@@ -178,79 +238,130 @@ int main(int argc, char* argv[]){
 	filesize = st.st_size;
 	cout << "File size: " << filesize << " bytes." << endl;
 
-
-	//read the file
-	int numof_bytes_read;
-
-	if (do_mmap){
+	if (do_mmap && !do_multi_threaded){
 		errno = 0;
-		mmapped_data = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+		mmapped_data = (char*)mmap(NULL, filesize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
 		if (mmapped_data < 0){
-			cout << "mmap error: errno set to " << errno << endl;
-			return 1;
+			perror("Could not mmap file.");
+			exit(1);
 		}
+		
 		//read through the returned area for the string
-		char *ptr = strstr( (char*)mmapped_data, search_string);
-		while ( ptr != NULL){
-			count ++;
-			ptr = strstr(ptr + 1, search_string);
+		int ptr = 0;
+		for (int i = 0; i < filesize; i++){
+			if (mmapped_data[i] == search_string[ptr]){
+				//if char matches, increment pointer for string search
+				ptr++;
+				if (ptr == strlen(search_string)){
+					count++;
+					ptr = 0;
+				}
+			}
+			else{
+				//if char mismatch
+				ptr = 0;
+			}
+		}
+		
+		if (munmap(mmapped_data, filesize) < 0){
+			perror("Could not unmap memory.");
+			exit(1);
 		}
 	}
 	else if (do_multi_threaded){
-		//based on the num threads to do work on we need to split work amongst
-		//them. The work should be the process of reading through the file and
-		//looking for the search string. We can use message passing like before
-		//where we do work, return a message to our parent process, and in that
-		//message return the count of words we found. The professor mentions
-		//looking into accounting for the fact that search strings can be split
-		//across files but for now let's not bother.
-
-		//problem: evenly splitting a buffer across threads
-		//What we can do, divide the number of bytes to read across each thread.
-		//Now, similar to what we've done previously, give extra bytes to
-		//threads when things are not evenly divisible.
-
-		//create mailboxes
-		//create semaphores
-		//create threads
-
-		//wait on message for threads
-		//check message for the number of search strings found and add to count
-		//close threads
-		//destroy semaphores
-		//prepare to exit
-
-		errno = 0;
-		void *mmapped_data = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
-		if (mmapped_data < 0){
-			cout << "mmap error: errno set to " << errno << endl;
-			return 1;
+		//create sems
+		for (int i = 0; i <= num_threads; i++){
+			if ( sem_init(&sendsem[i], 0, 1) == 0){
+				//created semaphore successfully...nothing more to do?
+			}
+			else{
+				perror("Could not create semaphore.");
+				exit(1);
+			}
 		}
 
-		//determine how to organize work amongst threads
+		for (int i = 0; i <= num_threads; i++){
+			if ( sem_init(&rcvsem[i], 0, 0) == 0){
+				//created semaphore successfully...nothing more to do?
+			}
+			else{
+				perror("Could not create semaphore.");
+				exit(1);
+			}
+		}
 
-	}
+		//create threds
+		//create parent thread
+		if (pthread_create(&tids[0], NULL, pthreadRoutine, &mailbox_ids[0]) == 0){
+			//thread created successfully
+		}
+		else{
+			perror("Could not create pthread.");
+			exit(1);
+		}
+
+		//create worker threads
+		for (int i = 1; i <= num_threads; i++){
+			if ( pthread_create(&tids[i], NULL, wthreadRoutine, &mailbox_ids[i]) == 0){
+				//thread created successfully...do nothing for now?
+			}
+			else{
+				perror("Could not create pthread.");
+				exit(1);
+			}
+		}
+
+		//join threads
+		for (int i = 0; i <= num_threads; i++){
+			int retval;
+			void* res;
+			retval = pthread_join(tids[i], &res);
+			if (retval != 0){
+				perror("could not join pthread.");
+				exit(1);
+			}
+		}
+
+		//destroy semaphores
+		for (int i = 0; i <= num_threads; i++){
+			sem_destroy(&sendsem[i]);
+			sem_destroy(&rcvsem[i]);
+		}
+
+	} //end of else if(do_multi_threaded)
+
 	else{
+		//do read
+		//read the file
+		int numof_bytes_read;
+		int ptr = 0;
 		while ( (numof_bytes_read = read(fd, read_buffer, bytes_to_read)) > 0){
 			//read returns the number of bytes read and increments some counter
 			//that marks where it currently is. So loop the read function and check
 			//what it stores in read_buffer for words to count. Incremement a count
 			//for the number of times a search string is found
 
+			for (int i = 0; i < numof_bytes_read; i++){
+				if (read_buffer[i] == search_string[ptr]){
+					//if char matches, increment pointer for string search
+					ptr++;
+					if (ptr == strlen(search_string)){
+						count++;
+						ptr = 0;
+					}
+				}
+				else{
+					//if char mismatch
+					ptr = 0;
+				}
 
-			//go through read_buffer and count num of search_string gound
-			char *ptr = strstr(read_buffer, search_string);
-			while (ptr != NULL){
-				count++;
-				ptr = strstr(ptr + 1, search_string);
 			}
-		}
+			//return count;
+
+		} //end of while loop
 	}
 
-	if (numof_bytes_read < 0){
-		cerr << "read error:";
-		return 1;
-	}
+	close(fd);
 	cout << "num of substr found " << count << endl;;
 	
 	return 0;
