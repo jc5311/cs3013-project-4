@@ -416,7 +416,7 @@ int main(int argc, char* argv[]){
 	}
 
 	close(fd);
-	cout << "num of substr found " << count << endl;;
+	cout << "Occurences of the string \"" << search_string << "\": " << count << endl;;
 	
 	return 0;
 } //end of main
