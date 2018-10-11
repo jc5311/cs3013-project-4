@@ -1,3 +1,24 @@
+//Team: Juan Caraballo
+
+//this program was created to demonstrate the use of file i/o using the methods
+//read() and mmap(). With it, one may search an arbitrary file for a desired
+//search string. Additionally functionallity was extended to allow usage of
+//mmap using multiple threads of execution. To use this program simply call it
+//from the terminal in the following format (note that the last 2 arguments are optional:
+//%proj4 [file_to_search] [search_string] [num_of_bytes_to_read|"mmap"] [num_of_threads]
+//
+// *if only a file_to_search and search_string is supplied the program will search
+//the file for the given search_string using the read() system call.
+// *if a number argument is given as the third argument to the program call, that
+//number will be used as the number of bytes the entered file_to_search will be
+//read at a time
+// *if the string "mmap" is entered as the third argument the mmap() system call
+//will be used to map the contents of the file_to_search in memory. From here
+//reading is done on the mapped memory
+// *if any number is given as the fourth argument to the program, regardless of
+//what is entered as the third argument to the program the fourth argument will be
+//used as the number of threads to use for reading a file that was mmaped to memory
+
 #include <iostream>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -175,8 +196,71 @@ int main(int argc, char* argv[]){
 			//mmap entered, acknowledge this
 			do_mmap = 1;
 		}
+		else if(argv[3][0] == 'p'){
+			//if p was entered as the first char to the third arg, assume it is
+			//followed by a desired number of threads
+			do_multi_threaded = 1;
+			if (strcmp("p1", argv[3]) == 0)
+				num_threads = 1;
+
+			else if (strcmp("p2", argv[3]) == 0)
+				num_threads = 2;
+
+			else if (strcmp("p3", argv[3]) == 0)
+				num_threads = 3;
+
+			else if (strcmp("p4", argv[3]) == 0)
+				num_threads = 4;
+
+			else if (strcmp("p5", argv[3]) == 0)
+				num_threads = 5;
+
+			else if (strcmp("p6", argv[3]) == 0)
+				num_threads = 6;
+
+			else if (strcmp("p7", argv[3]) == 0)
+				num_threads = 7;
+
+			else if (strcmp("p8", argv[3]) == 0)
+				num_threads = 8;
+
+			else if (strcmp("p9", argv[3]) == 0)
+				num_threads = 9;
+
+			else if (strcmp("p10", argv[3]) == 0)
+				num_threads = 10;
+
+			else if (strcmp("p11", argv[3]) == 0)
+				num_threads = 11;
+
+			else if (strcmp("p12", argv[3]) == 0)
+				num_threads = 12;
+
+			else if (strcmp("p13", argv[3]) == 0)
+				num_threads = 13;
+
+			else if (strcmp("p14", argv[3]) == 0)
+				num_threads = 14;
+
+			else if (strcmp("p15", argv[3]) == 0)
+				num_threads = 15;
+
+			else if (strcmp("p16", argv[3]) == 0)
+				num_threads = 16;
+
+			else{
+				cout << "Error: Please enter at least 1 thread or at most 16 threads." << endl;
+				exit(1);
+			}
+
+			if (num_threads > filesize){
+				num_threads = filesize;
+			}
+
+		}
 		else{
-			//mmap not entered, assume it is a number
+			//mmap not entered, and num_threads not entered
+			//assume it is a number for the number of bytes to read
 			int entry = atoi(argv[3]);
 			if (entry >= MAXCHUNK){
 				bytes_to_read = MAXCHUNK;
@@ -187,22 +271,6 @@ int main(int argc, char* argv[]){
 		}
 	}
 
-	if (argc > 4){
-		//fourth argument given for number of threads to use
-		do_multi_threaded = 1;
-		int entry = atoi(argv[4]);
-		if ( (entry > 0) && (entry <= MAXTHREADS)){
-			num_threads = entry;
-
-			if (num_threads > filesize){
-				num_threads = filesize;
-			}
-		}
-		else if ( (entry < 0) || (entry > MAXTHREADS) ){
-			cout << "Error: Please enter at least 1 thread or at most 16 threads." << endl;
-			exit(1);
-		}
-	}
 	//end of input arg checking ************************************************
 
 	//print file size
