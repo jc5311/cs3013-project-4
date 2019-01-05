@@ -1,0 +1,34 @@
+Team: Juan Caraballo
+
+Below are a couple of sample runs for my proj4 program. Please note that
+file reading through read() and mmap() system calls have been completed fully.
+Additionally parallelization has been implemented and proven to be
+fully-operational. The program also takes into account scenarios where the end
+of a buffer is reached but a string has not completed searching. All parts of
+this project have been completed and tested to full, proper operation.
+
+./proj4 fun.txt fun
+File size: 26 bytes.
+Occurences of the string "fun": 4
+
+./proj4 myfork.C arg 100
+File size: 786 bytes.
+Occurences of the string "arg": 12
+
+./proj4 appc.txt idea mmap
+File size: 12082 bytes.
+Occurences of the string "idea": 32
+
+./proj4 appc.txt idea p4
+File size: 12082 bytes.
+Occurences of the string "idea": 32
+
+./proj4 appc.txt idea p100
+Error: Please enter at least 1 thread or at most 16 threads.
+
+./proj4 appc.txt idea p-4
+Error: Please enter at least 1 thread or at most 16 threads.
+
+./proj4 fun.txt fun 2
+File size: 26 bytes.
+Occurences of the string "fun": 4

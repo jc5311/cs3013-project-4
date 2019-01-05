@@ -381,7 +381,12 @@ int main(int argc, char* argv[]){
 			sem_destroy(&sendsem[i]);
 			sem_destroy(&rcvsem[i]);
 		}
-
+		//unmap memory
+		if (munmap(mmapped_data, filesize) < 0){
+			perror("Could not unmap memory.");
+			exit(1);
+		}
+		
 	} //end of else if(do_multi_threaded)
 
 	else{
